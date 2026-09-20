@@ -23,6 +23,16 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
         ImGuiWindowFlags_NoScrollWithMouse |
         ImGuiWindowFlags_MenuBar);
 
+    auto SyncToSelectedLine = [&](int target_idx) {
+        if (target_idx < 0 || target_idx >= static_cast<int>(ui.lines.size())) return;
+        dbg.Reset(doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+        for (int k = 0; k <= target_idx; ++k) {
+            dbg.ExecuteStep(false, doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+        }
+        ui.selected_index = target_idx;
+        ui.scrollToLine = target_idx;
+    };
+
     auto TriggerOpenFile = [&]() {
         if (OpenFileDialog(hwnd, ui.filePathBuf, sizeof(ui.filePathBuf))) {
             if (doc.LoadFromFile(ui.filePathBuf)) {
@@ -35,6 +45,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
                 ui.scrollToLine = ui.selected_index;
                 dbg.dbg_active = false;
                 dbg.dbg_history.clear();
+                if (!ui.lines.empty()) {
+                    SyncToSelectedLine(0);
+                }
             }
         }
     };
@@ -60,6 +73,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
                 ui.scrollToLine = ui.selected_index;
                 dbg.dbg_active = false;
                 dbg.dbg_history.clear();
+                if (!ui.lines.empty()) {
+                    SyncToSelectedLine(0);
+                }
             }
         }
     };
@@ -74,6 +90,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
             ui.scrollToLine = ui.selected_index;
             dbg.dbg_active = false;
             dbg.dbg_history.clear();
+            if (ui.selected_index >= 0) {
+                SyncToSelectedLine(ui.selected_index);
+            }
         }
     };
 
@@ -87,6 +106,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
             ui.scrollToLine = ui.selected_index;
             dbg.dbg_active = false;
             dbg.dbg_history.clear();
+            if (ui.selected_index >= 0) {
+                SyncToSelectedLine(ui.selected_index);
+            }
         }
     };
 
@@ -128,6 +150,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
                 ui.scrollToLine = ui.selected_index;
                 dbg.dbg_active = false;
                 dbg.dbg_history.clear();
+                if (ui.selected_index >= 0) {
+                    SyncToSelectedLine(ui.selected_index);
+                }
             }
         }
     };
@@ -167,6 +192,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
             ImGui::Separator();
             if (ImGui::MenuItem("Restart", "Ctrl+F2", false, !ui.lines.empty())) {
                 dbg.Reset(doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+                if (!ui.lines.empty()) {
+                    SyncToSelectedLine(0);
+                }
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Toggle Breakpoint", "F2", false, ui.selected_index >= 0)) {
@@ -243,17 +271,14 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
         }
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
             if (ui.selected_index > 0) {
-                ui.selected_index--;
-                ui.scrollToLine = ui.selected_index;
-            } else if (ui.selected_index == -1) {
-                ui.selected_index = 0;
-                ui.scrollToLine = 0;
+                SyncToSelectedLine(ui.selected_index - 1);
+            } else if (ui.selected_index == -1 && !ui.lines.empty()) {
+                SyncToSelectedLine(0);
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-            if (ui.selected_index < static_cast<int>(ui.lines.size())) {
-                ui.selected_index++;
-                ui.scrollToLine = ui.selected_index;
+            if (!ui.lines.empty() && ui.selected_index < static_cast<int>(ui.lines.size()) - 1) {
+                SyncToSelectedLine(ui.selected_index + 1);
             }
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && !io.KeyCtrl) {
@@ -263,6 +288,9 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
         }
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
             dbg.Reset(doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+            if (!ui.lines.empty()) {
+                SyncToSelectedLine(0);
+            }
         }
         if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_F7, true)) {
             dbg.StepBack(ui.lines, ui.selected_index, ui.scrollToLine);
@@ -283,8 +311,7 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
                     for (int idx = 0; idx < static_cast<int>(ui.lines.size()); idx++) {
                         if (ui.lines[idx].address == target_addr) {
                             dbg.nav_history.push_back(ui.selected_index);
-                            ui.selected_index = idx;
-                            ui.scrollToLine = idx;
+                            SyncToSelectedLine(idx);
                             break;
                         }
                     }
@@ -293,16 +320,15 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             if (!dbg.nav_history.empty()) {
-                ui.selected_index = dbg.nav_history.back();
-                ui.scrollToLine = ui.selected_index;
+                int prev_idx = dbg.nav_history.back();
                 dbg.nav_history.pop_back();
+                SyncToSelectedLine(prev_idx);
             } else if (ui.selected_index >= 0 && ui.selected_index < static_cast<int>(ui.lines.size())) {
                 uint64_t my_addr = ui.lines[ui.selected_index].address;
                 for (int idx = 0; idx < static_cast<int>(ui.lines.size()); idx++) {
                     if (!ui.lines[idx].is_data && IsJumpInstruction(ui.lines[idx].mnemonic)) {
                         if (ParseJumpTargetAddress(ui.lines[idx].op_str) == my_addr) {
-                            ui.selected_index = idx;
-                            ui.scrollToLine = idx;
+                            SyncToSelectedLine(idx);
                             break;
                         }
                     }
@@ -371,7 +397,7 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
         snprintf(selectable_id, sizeof(selectable_id), "##line_%d", i);
 
         if (ImGui::Selectable(selectable_id, is_selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
-            ui.selected_index = i;
+            SyncToSelectedLine(i);
         }
 
         if (has_bp) {
