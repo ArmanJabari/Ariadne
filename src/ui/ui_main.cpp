@@ -6,9 +6,98 @@
 #include "emulator.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
+
+static uint16_t ExtractTargetAddress(const std::string& op_str, bool& has_addr, bool& is_bracket) {
+    has_addr = false;
+    is_bracket = false;
+    size_t open_b = op_str.find('[');
+    size_t close_b = op_str.find(']');
+    if (open_b != std::string::npos && close_b != std::string::npos && close_b > open_b) {
+        std::string inner = op_str.substr(open_b + 1, close_b - open_b - 1);
+        size_t hex_pos = inner.find("0x");
+        if (hex_pos == std::string::npos) hex_pos = inner.find("0X");
+        if (hex_pos != std::string::npos) {
+            try {
+                unsigned long val = std::stoul(inner.substr(hex_pos), nullptr, 16);
+                if (val >= 0x0100 && val <= 0xFFFF) {
+                    has_addr = true;
+                    is_bracket = true;
+                    return static_cast<uint16_t>(val);
+                }
+            } catch (...) {}
+        }
+    }
+    size_t hex_pos = op_str.find("0x");
+    if (hex_pos == std::string::npos) hex_pos = op_str.find("0X");
+    if (hex_pos != std::string::npos) {
+        try {
+            unsigned long val = std::stoul(op_str.substr(hex_pos), nullptr, 16);
+            if (val >= 0x0100 && val <= 0xFFFF) {
+                has_addr = true;
+                is_bracket = false;
+                return static_cast<uint16_t>(val);
+            }
+        } catch (...) {}
+    }
+    return 0;
+}
+
+static std::string ResolveAnnotation(uint16_t addr, bool is_bracket, const std::vector<uint8_t>& buf) {
+    if (addr < 0x0100) return "";
+    size_t offset = static_cast<size_t>(addr - 0x0100);
+    if (offset >= buf.size()) return "";
+
+    bool is_string = false;
+    size_t str_len = 0;
+    for (size_t i = offset; i < buf.size() && (i - offset) < 128; ++i) {
+        uint8_t b = buf[i];
+        if (b == '$' || b == 0x00) {
+            if (str_len >= 1) {
+                is_string = true;
+            }
+            break;
+        }
+        if (b >= 32 && b <= 126) {
+            str_len++;
+        } else {
+            break;
+        }
+    }
+
+    if (is_string) {
+        std::string res = "; \"";
+        for (size_t i = offset; i < buf.size() && (i - offset) < 128; ++i) {
+            uint8_t b = buf[i];
+            if (b == '$') {
+                res += '$';
+                break;
+            }
+            if (b == 0x00) {
+                break;
+            }
+            res += static_cast<char>(b);
+        }
+        res += "\"";
+        return res;
+    }
+
+    if (!is_bracket) {
+        return "";
+    }
+
+    if (offset + 1 < buf.size()) {
+        uint16_t val = static_cast<uint16_t>(buf[offset]) | (static_cast<uint16_t>(buf[offset + 1]) << 8);
+        return "; = " + std::to_string(val);
+    } else {
+        uint8_t val = buf[offset];
+        return "; = " + std::to_string(static_cast<int>(val));
+    }
+}
 
 void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugger& dbg) {
     ImGuiIO& io = ImGui::GetIO();
@@ -542,6 +631,22 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
                             ImGui::SameLine(0.0f, 0.0f);
                         }
                     }
+                }
+            }
+
+            bool has_addr = false;
+            bool is_bracket = false;
+            uint16_t target_addr = ExtractTargetAddress(line.op_str, has_addr, is_bracket);
+            if (has_addr && !IsJumpInstruction(line.mnemonic)) {
+                std::string annot = ResolveAnnotation(target_addr, is_bracket, doc.binary_buffer);
+                if (!annot.empty()) {
+                    float annot_x = total_gutter_width + 280.0f;
+                    if (ImGui::GetCursorPosX() < annot_x) {
+                        ImGui::SameLine(annot_x);
+                    } else {
+                        ImGui::SameLine(0.0f, 15.0f);
+                    }
+                    ImGui::TextColored(ImVec4(0.55f, 0.68f, 0.35f, 0.85f), "%s", annot.c_str());
                 }
             }
         }
