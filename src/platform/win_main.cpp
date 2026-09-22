@@ -16,6 +16,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return true;
 
     switch (msg) {
+    case WM_ACTIVATE:
+        UpdateTitleBarTheme(hWnd, g_theme.mode == THEME_DARK);
+        return 0;
     case WM_SIZE:
         if (wParam != SIZE_MINIMIZED) {
             g_d3dpp.BackBufferWidth = LOWORD(lParam);
@@ -28,6 +31,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         break;
     case WM_DESTROY:
+        SaveThemePreference();
         PostQuitMessage(0);
         return 0;
     }
@@ -74,17 +78,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         return 1;
     }
 
-    ShowWindow(hwnd, SW_SHOWDEFAULT);
-    UpdateWindow(hwnd);
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
 
-    ApplyThemeDark();
+    LoadAndApplyTheme(hwnd);
     ImGui::GetStyle().Colors[ImGuiCol_NavHighlight] = ImVec4(0, 0, 0, 0);
+
+    ShowWindow(hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(hwnd);
+    UpdateTitleBarTheme(hwnd, g_theme.mode == THEME_DARK);
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX9_Init(g_pd3dDevice);

@@ -1,9 +1,50 @@
 #include "theme.h"
+#include <dwmapi.h>
+#include <cstdio>
+
+#ifdef _MSC_VER
+#pragma comment(lib, "dwmapi.lib")
+#endif
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
 
 AppTheme g_theme;
 
-void ApplyThemeDark() {
+void UpdateTitleBarTheme(HWND hwnd, bool dark) {
+    if (!hwnd) return;
+
+    BOOL use_dark = dark ? TRUE : FALSE;
+    if (FAILED(DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &use_dark, sizeof(use_dark)))) {
+        DwmSetWindowAttribute(hwnd, 19, &use_dark, sizeof(use_dark));
+    }
+
+    COLORREF caption_col = dark ? RGB(28, 30, 41) : RGB(235, 230, 220);
+    COLORREF text_col    = dark ? RGB(217, 222, 232) : RGB(51, 56, 61);
+
+    DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &caption_col, sizeof(caption_col));
+    DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &text_col, sizeof(text_col));
+
+    SendMessageA(hwnd, WM_NCACTIVATE, FALSE, 0);
+    SendMessageA(hwnd, WM_NCACTIVATE, TRUE, 0);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+}
+
+void ApplyThemeDark(HWND hwnd) {
     g_theme.mode = THEME_DARK;
+    UpdateTitleBarTheme(hwnd, true);
+
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
@@ -81,8 +122,10 @@ void ApplyThemeDark() {
     g_theme.arrow_down_col      = ImColor(0.45f, 0.75f, 0.85f, 0.85f);
 }
 
-void ApplyThemeLight() {
+void ApplyThemeLight(HWND hwnd) {
     g_theme.mode = THEME_LIGHT;
+    UpdateTitleBarTheme(hwnd, false);
+
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
@@ -158,4 +201,29 @@ void ApplyThemeLight() {
     g_theme.arrow_active_col    = ImColor(0.78f, 0.42f, 0.05f, 1.00f);
     g_theme.arrow_up_col        = ImColor(0.70f, 0.28f, 0.28f, 0.85f);
     g_theme.arrow_down_col      = ImColor(0.22f, 0.45f, 0.65f, 0.85f);
+}
+
+void SaveThemePreference() {
+    FILE* f = fopen("theme.cfg", "w");
+    if (f) {
+        fprintf(f, "%d\n", static_cast<int>(g_theme.mode));
+        fclose(f);
+    }
+}
+
+void LoadAndApplyTheme(HWND hwnd) {
+    int saved_mode = 0;
+    FILE* f = fopen("theme.cfg", "r");
+    if (f) {
+        if (fscanf(f, "%d", &saved_mode) != 1) {
+            saved_mode = 0;
+        }
+        fclose(f);
+    }
+
+    if (saved_mode == 1) {
+        ApplyThemeLight(hwnd);
+    } else {
+        ApplyThemeDark(hwnd);
+    }
 }

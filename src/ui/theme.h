@@ -1,5 +1,6 @@
 #pragma once
 
+#include <windows.h>
 #include "imgui.h"
 
 enum ThemeMode {
@@ -39,5 +40,8 @@ struct AppTheme {
 
 extern AppTheme g_theme;
 
-void ApplyThemeDark();
-void ApplyThemeLight();
+void UpdateTitleBarTheme(HWND hwnd, bool dark);
+void ApplyThemeDark(HWND hwnd);
+void ApplyThemeLight(HWND hwnd);
+void SaveThemePreference();
+void LoadAndApplyTheme(HWND hwnd);

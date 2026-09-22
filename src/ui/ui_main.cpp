@@ -319,10 +319,10 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
 
         if (ImGui::BeginMenu("Theme")) {
             if (ImGui::MenuItem("Dark", nullptr, g_theme.mode == THEME_DARK)) {
-                ApplyThemeDark();
+                ApplyThemeDark(hwnd);
             }
             if (ImGui::MenuItem("Light", nullptr, g_theme.mode == THEME_LIGHT)) {
-                ApplyThemeLight();
+                ApplyThemeLight(hwnd);
             }
             ImGui::EndMenu();
         }
