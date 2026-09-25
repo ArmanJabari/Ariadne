@@ -114,12 +114,38 @@ void RenderUI(HWND hwnd, bool& done, UIContext& ui, EditorDocument& doc, Debugge
 
     auto SyncToSelectedLine = [&](int target_idx) {
         if (target_idx < 0 || target_idx >= static_cast<int>(ui.lines.size())) return;
-        dbg.Reset(doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
-        for (int k = 0; k <= target_idx; ++k) {
-            dbg.ExecuteStep(false, doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+
+        if (!dbg.dbg_active) {
+            dbg.Reset(doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
         }
-        ui.selected_index = target_idx;
-        ui.scrollToLine = target_idx;
+
+        if (ui.selected_index == target_idx) {
+            ui.scrollToLine = target_idx;
+            return;
+        }
+
+        int rewind_pos = -1;
+        for (int h = static_cast<int>(dbg.dbg_history.size()) - 1; h >= 0; --h) {
+            if (dbg.dbg_history[h].index == target_idx) {
+                rewind_pos = h;
+                break;
+            }
+        }
+
+        if (rewind_pos != -1) {
+            while (static_cast<int>(dbg.dbg_history.size()) > rewind_pos) {
+                dbg.StepBack(ui.lines, ui.selected_index, ui.scrollToLine);
+            }
+        } else {
+            int max_steps = 500000;
+            while (ui.selected_index != target_idx && max_steps-- > 0) {
+                int before = ui.selected_index;
+                dbg.ExecuteStep(false, doc.binary_buffer, ui.lines, ui.selected_index, ui.scrollToLine);
+                if (ui.selected_index == before) break;
+            }
+        }
+
+        ui.scrollToLine = ui.selected_index;
     };
 
     auto TriggerOpenFile = [&]() {
